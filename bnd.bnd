@@ -1,0 +1,12 @@
+Bundle-Version: 0.1.0
+Private-Package: org.greenscape.site.rest
+GS-Resource: org.greenscape.site.rest=org.greenscape.site.SiteEntity
+-buildpath: osgi.core;version=4.3,\
+	osgi.cmpn,\
+	org.amdatu.web.rest.jaxrs,\
+	org.greenscape.site;version=latest,\
+	org.eclipse.osgi.services,\
+	org.greenscape.site.service;version=latest,\
+	org.greenscape.web.rest;version=latest,\
+	org.greenscape.core;version=latest
+-dsannotations: *
