@@ -1,5 +1,7 @@
 package org.greenscape.site.rest;
 
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
 import java.util.List;
 import java.util.Map;
 
@@ -14,6 +16,7 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.UriInfo;
@@ -37,11 +40,11 @@ import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.component.annotations.ReferencePolicy;
 import org.osgi.service.log.LogService;
 
-@Component(name = SiteResource.FACTORY_DS, property = { Constants.SERVICE_RANKING + "=1000" })
+@Component(name = SiteResource.FACTORY_DS, property = { Constants.SERVICE_RANKING + "=2000" })
 public class SiteResource implements RestService {
 	static final String FACTORY_DS = "org.greenscape.site.rest.SiteResource";
-	private static final String PARAM_DEF_ORG_ID = "orgId";
-	private static final String PATH_DEF_SITE_ID = "id/{siteId}";
+	// private static final String PARAM_DEF_ORG_ID = "orgId";
+	private static final String PATH_DEF_SITE_ID = "{siteId}";
 	private static final String PATH_DEF_SITE_NAME = "name/{name}";
 
 	private SiteService siteService;
@@ -59,8 +62,12 @@ public class SiteResource implements RestService {
 	@GET
 	@Produces(MediaType.APPLICATION_JSON)
 	public List<SiteModel> list(@Context UriInfo uriInfo) {
-		@SuppressWarnings("unchecked")
-		List<SiteModel> list = (List<SiteModel>) siteService.find(clazz, uriInfo.getQueryParameters());
+		List<SiteModel> list = null;
+		if (uriInfo.getQueryParameters() == null || uriInfo.getQueryParameters().size() == 0) {
+			list = siteService.find(clazz);
+		} else {
+			list = siteService.find(clazz, uriInfo.getQueryParameters());
+		}
 		return list;
 	}
 
@@ -78,9 +85,9 @@ public class SiteResource implements RestService {
 		return site;
 	}
 
-	@GET
-	@Produces(MediaType.APPLICATION_JSON)
-	@Path(PATH_DEF_SITE_NAME)
+	// @GET
+	// @Produces(MediaType.APPLICATION_JSON)
+	// @Path(PATH_DEF_SITE_NAME)
 	public SiteModel getSiteByName(@PathParam("name") String name) {
 		Site site = null;
 		try {
@@ -130,15 +137,13 @@ public class SiteResource implements RestService {
 	}
 
 	@DELETE
-	public String deleteModel() {
+	public void deleteModel() {
 		siteService.delete(clazz);
-		return "OK";
 	}
 
 	@DELETE
 	@Path(PATH_DEF_SITE_ID)
-	public String deleteModel(@PathParam("siteId") String id) {
-		return "OK";
+	public void deleteModel(@PathParam("siteId") String id) {
 	}
 
 	/*
@@ -147,8 +152,8 @@ public class SiteResource implements RestService {
 	@GET
 	@Produces(MediaType.APPLICATION_JSON)
 	@Path(PATH_DEF_SITE_ID + "/page")
-	public List<PageModel> getPages(@PathParam("siteId") String siteId) {
-		List<PageModel> pages = siteService.find(Page.class, PageModel.SITE_ID, siteId);
+	public List<? extends PageModel> getPages(@PathParam("siteId") String siteId) {
+		List<Page> pages = siteService.find(Page.class, PageModel.SITE_ID, siteId);
 		return pages;
 	}
 
@@ -173,6 +178,30 @@ public class SiteResource implements RestService {
 		page.setSiteId(siteId);
 		Page entity = siteService.save(page);
 		return entity;
+	}
+
+	@PUT
+	@Path(PATH_DEF_SITE_ID + "/page/" + "{pageId}")
+	@Consumes(MediaType.APPLICATION_JSON)
+	public void updatePage(@PathParam("siteId") String siteId, @PathParam("pageId") String pageId,
+			@Context UriInfo uriInfo) {
+		Page entity = siteService.find(Page.class, pageId);
+		if (entity == null) {
+			throw new WebApplicationException(Response.status(Status.NOT_FOUND)
+					.entity("No page with id " + pageId + " exists").build());
+		}
+		copy(entity, uriInfo.getQueryParameters());
+		siteService.update(entity);
+	}
+
+	@DELETE
+	@Path(PATH_DEF_SITE_ID + "/page/" + "{pageId}")
+	public void deletePage(@PathParam("siteId") String siteId, @PathParam("pageId") String pageId) {
+		try {
+			siteService.deletePage(siteId, pageId);
+		} catch (Exception e) {
+			throw new WebApplicationException(Response.status(Status.NOT_ACCEPTABLE).entity(e.getMessage()).build());
+		}
 	}
 
 	@Activate
@@ -209,6 +238,11 @@ public class SiteResource implements RestService {
 		this.logService = null;
 	}
 
+	@Override
+	public String toString() {
+		return clazz.getName();
+	}
+
 	@SuppressWarnings("unchecked")
 	private void init(BundleContext ctx) {
 		if (ctx == null) {
@@ -225,8 +259,19 @@ public class SiteResource implements RestService {
 	private void copy(Site entity, SiteModelParam param) {
 		entity.setActive(param.isActive());
 		entity.setDefault(param.isDefault());
-		entity.setHomeURL(param.getHomeURL().toLowerCase());
+		entity.setHomeURL(param.getHomeURL());
 		entity.setName(param.getName());
+	}
+
+	private void copy(Page entity, MultivaluedMap<String, String> param) {
+		// entity.setActive(param.isActive());
+		// entity.setDefault(param.isDefault());
+		entity.setPathURL(param.getFirst("pathURL"));
+		try {
+			entity.setName(URLDecoder.decode(param.getFirst("name"), "UTF-8"));
+		} catch (UnsupportedEncodingException e) {
+			logService.log(LogService.LOG_ERROR, e.getMessage(), e);
+		}
 	}
 
 	private boolean hasPath(List<Page> pages, String path) {
