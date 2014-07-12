@@ -147,36 +147,30 @@ public class PageResource implements RestService {
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Path(PATH_DEF_PAGE_ID + "/pagelet/{pageletId}")
 	public PageletModel updatePagelet(@PathParam("pageId") String pageId, @PathParam("pageletId") String pageletId,
-			@QueryParam("row") Integer row, @QueryParam("column") Integer column, @QueryParam("order") Integer order,
-			@QueryParam("title") String title) {
+			PageletModelParam pageletParam) {
 		// validate pageId
 		Page page = service.find(Page.class, pageId);
 		if (page == null) {
 			throw new WebApplicationException(Response.status(Status.NOT_FOUND).entity("Page does not exist").build());
 		}
-		if (row != null && column != null && order != null) {
+		if (pageletParam.getRow() != null && pageletParam.getColumn() != null && pageletParam.getOrder() != null) {
 			List<Pagelet> pagelets = service.find(Pagelet.class, Pagelet.PAGE_ID, pageId);
-			PageletModelParam pageletParam = new PageletModelParam();
-			pageletParam.setPageletId(pageletId);
-			pageletParam.setRow(row);
-			pageletParam.setColumn(column);
-			pageletParam.setOrder(order);
 			reorderPagelets(pagelets, pageletParam);
 		}
 		Pagelet pagelet = service.find(Pagelet.class, pageletId);
 		Date now = new Date();
 		pagelet.setModifiedDate(now);
-		if (row != null) {
-			pagelet.setRow(row);
+		if (pageletParam.getRow() != null) {
+			pagelet.setRow(pageletParam.getRow());
 		}
-		if (column != null) {
-			pagelet.setColumn(column);
+		if (pageletParam.getColumn() != null) {
+			pagelet.setColumn(pageletParam.getColumn());
 		}
-		if (order != null) {
-			pagelet.setOrder(order);
+		if (pageletParam.getOrder() != null) {
+			pagelet.setOrder(pageletParam.getOrder());
 		}
-		if (title != null) {
-			pagelet.setTitle(title);
+		if (pageletParam.getTitle() != null) {
+			pagelet.setTitle(pageletParam.getTitle());
 		}
 
 		service.update(pagelet);
@@ -197,7 +191,7 @@ public class PageResource implements RestService {
 		for (Pagelet pg : pagelets) {
 			if (pg.getRow() == row && pg.getColumn() == column && pg.getOrder() > order) {
 				pg.setOrder(pg.getOrder().intValue() - 1);
-				service.save(pg);
+				service.update(pg);
 			}
 		}
 	}
