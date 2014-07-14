@@ -22,13 +22,13 @@ import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.UriInfo;
 
 import org.greenscape.core.WebletItem;
+import org.greenscape.core.model.Page;
+import org.greenscape.core.model.PageModel;
 import org.greenscape.core.model.Pagelet;
 import org.greenscape.core.model.PageletModel;
 import org.greenscape.core.service.Service;
 import org.greenscape.persistence.ModelRegistryEntry;
 import org.greenscape.persistence.annotations.Model;
-import org.greenscape.site.Page;
-import org.greenscape.site.PageModel;
 import org.greenscape.web.rest.RestService;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
@@ -208,7 +208,7 @@ public class PageResource implements RestService {
 		init(context);
 	}
 
-	@Reference(target = "(modelClass=org.greenscape.site.Page)", policy = ReferencePolicy.DYNAMIC)
+	@Reference(target = "(modelClass=org.greenscape.core.model.Page)", policy = ReferencePolicy.DYNAMIC)
 	public void setModelRegistryEntry(ModelRegistryEntry modelRegistryEntry) {
 		this.modelRegistryEntry = modelRegistryEntry;
 	}

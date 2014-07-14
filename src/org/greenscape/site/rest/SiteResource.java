@@ -21,13 +21,13 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.UriInfo;
 
+import org.greenscape.core.model.Page;
+import org.greenscape.core.model.PageModel;
+import org.greenscape.core.model.Site;
+import org.greenscape.core.model.SiteModel;
 import org.greenscape.persistence.DocumentModel;
 import org.greenscape.persistence.ModelRegistryEntry;
 import org.greenscape.persistence.annotations.Model;
-import org.greenscape.site.Page;
-import org.greenscape.site.PageModel;
-import org.greenscape.site.Site;
-import org.greenscape.site.SiteModel;
 import org.greenscape.site.service.SiteService;
 import org.greenscape.web.rest.RestService;
 import org.osgi.framework.BundleContext;
@@ -210,7 +210,7 @@ public class SiteResource implements RestService {
 		init(context);
 	}
 
-	@Reference(target = "(modelClass=org.greenscape.site.Site)", policy = ReferencePolicy.DYNAMIC)
+	@Reference(target = "(modelClass=org.greenscape.core.model.Site)", policy = ReferencePolicy.DYNAMIC)
 	public void setModelRegistryEntry(ModelRegistryEntry modelRegistryEntry) {
 		this.modelRegistryEntry = modelRegistryEntry;
 		init(context);
