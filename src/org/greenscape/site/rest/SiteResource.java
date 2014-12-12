@@ -3,7 +3,6 @@ package org.greenscape.site.rest;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.util.List;
-import java.util.Map;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
@@ -21,19 +20,17 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.UriInfo;
 
+import org.greenscape.core.ResourceRegistry;
 import org.greenscape.core.model.Page;
 import org.greenscape.core.model.PageModel;
 import org.greenscape.core.model.Site;
 import org.greenscape.core.model.SiteModel;
+import org.greenscape.core.service.Service;
 import org.greenscape.persistence.DocumentModel;
-import org.greenscape.persistence.ModelRegistryEntry;
-import org.greenscape.persistence.annotations.Model;
 import org.greenscape.site.service.SiteService;
+import org.greenscape.web.rest.AbstractRestService;
 import org.greenscape.web.rest.RestService;
-import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
-import org.osgi.service.component.ComponentContext;
-import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
@@ -41,43 +38,27 @@ import org.osgi.service.component.annotations.ReferencePolicy;
 import org.osgi.service.log.LogService;
 
 @Component(name = SiteResource.FACTORY_DS, property = { Constants.SERVICE_RANKING + "=2000" })
-public class SiteResource implements RestService {
+public class SiteResource extends AbstractRestService implements RestService {
 	static final String FACTORY_DS = "org.greenscape.site.rest.SiteResource";
+	private static final String MODEL_PAGE = "page";
 	// private static final String PARAM_DEF_ORG_ID = "orgId";
 	private static final String PATH_DEF_SITE_ID = "{siteId}";
 	private static final String PATH_DEF_SITE_NAME = "name/{name}";
 
 	private SiteService siteService;
-	private ModelRegistryEntry modelRegistryEntry;
-	private Class<? extends DocumentModel> clazz;
-
-	private BundleContext context;
-	private LogService logService;
 
 	@Override
 	public String getResourceName() {
-		return clazz.getAnnotation(Model.class).name();
-	}
-
-	@GET
-	@Produces(MediaType.APPLICATION_JSON)
-	public List<SiteModel> list(@Context UriInfo uriInfo) {
-		List<SiteModel> list = null;
-		if (uriInfo.getQueryParameters() == null || uriInfo.getQueryParameters().size() == 0) {
-			list = siteService.find(clazz);
-		} else {
-			list = siteService.find(clazz, uriInfo.getQueryParameters());
-		}
-		return list;
+		return "site";
 	}
 
 	@GET
 	@Produces(MediaType.APPLICATION_JSON)
 	@Path(PATH_DEF_SITE_ID)
 	public SiteModel getSite(@PathParam("siteId") String siteId) {
-		Site site = null;
+		SiteModel site = null;
 		try {
-			site = siteService.find(clazz, siteId);
+			site = siteService.find(siteId);
 		} catch (Exception e) {
 			logService.log(LogService.LOG_ERROR, e.getMessage(), e);
 			throw new WebApplicationException(Response.status(Status.NOT_FOUND).entity("Server error").build());
@@ -89,15 +70,15 @@ public class SiteResource implements RestService {
 	// @Produces(MediaType.APPLICATION_JSON)
 	// @Path(PATH_DEF_SITE_NAME)
 	public SiteModel getSiteByName(@PathParam("name") String name) {
-		Site site = null;
+		SiteModel site = null;
 		try {
-			List<Site> sites = siteService.find(clazz, SiteModel.SITE_NAME, name);
+			List<SiteModel> sites = siteService.find(SiteModel.SITE_NAME, name);
 			if (sites == null || sites.size() == 0) {
 				throw new WebApplicationException(Response.status(Status.NOT_FOUND).entity("Site does not exist")
 						.build());
 			}
 			site = sites.get(0);
-			List<Page> pages = siteService.find(Page.class, Page.SITE_ID, site.getModelId());
+			List<Page> pages = service.find(MODEL_PAGE, Page.SITE_ID, site.getModelId());
 			if (pages != null) {
 				site.getPages().addAll(pages);
 			}
@@ -112,21 +93,17 @@ public class SiteResource implements RestService {
 	@Consumes(MediaType.APPLICATION_JSON)
 	public String addSite(SiteModelParam param) {
 		Site entity;
-		try {
-			entity = (Site) clazz.newInstance();
-			copy(entity, param);
-			DocumentModel model = siteService.save(entity);
-			return model.getModelId();
-		} catch (InstantiationException | IllegalAccessException e) {
-			throw new WebApplicationException(Response.status(Status.NOT_ACCEPTABLE).entity(e.getMessage()).build());
-		}
+		entity = new Site();
+		copy(entity, param);
+		DocumentModel model = siteService.save(entity);
+		return model.getModelId();
 	}
 
 	@PUT
 	@Path(PATH_DEF_SITE_ID)
 	@Consumes(MediaType.APPLICATION_JSON)
 	public String updateSite(@PathParam("siteId") String siteId, SiteModelParam param) {
-		Site entity = siteService.find(clazz, siteId);
+		SiteModel entity = siteService.find(siteId);
 		if (entity == null) {
 			throw new WebApplicationException(Response.status(Status.NOT_FOUND)
 					.entity("No site with id " + siteId + " exists").build());
@@ -138,7 +115,7 @@ public class SiteResource implements RestService {
 
 	@DELETE
 	public void deleteModel() {
-		siteService.delete(clazz);
+		siteService.delete();
 	}
 
 	@DELETE
@@ -153,7 +130,7 @@ public class SiteResource implements RestService {
 	@Produces(MediaType.APPLICATION_JSON)
 	@Path(PATH_DEF_SITE_ID + "/page")
 	public List<? extends PageModel> getPages(@PathParam("siteId") String siteId) {
-		List<Page> pages = siteService.find(Page.class, PageModel.SITE_ID, siteId);
+		List<Page> pages = service.find(MODEL_PAGE, PageModel.SITE_ID, siteId);
 		return pages;
 	}
 
@@ -163,7 +140,7 @@ public class SiteResource implements RestService {
 	public PageModel addPage(@PathParam("siteId") String siteId, PageModelParam pageParam) {
 		// TODO: validate siteId
 		// TODO: validate page properties
-		List<Page> pages = siteService.find(Page.class, PageModel.SITE_ID, siteId);
+		List<Page> pages = service.find(MODEL_PAGE, PageModel.SITE_ID, siteId);
 		String path = pageParam.getName().toLowerCase().replace(' ', '-');
 		String newPath = path;
 		int i = 1;
@@ -176,7 +153,7 @@ public class SiteResource implements RestService {
 		page.setPathURL(newPath);
 		page.setLayoutURL("/common/layout/2-col.html");
 		page.setSiteId(siteId);
-		Page entity = siteService.save(page);
+		Page entity = service.save(PageModel.MODEL_NAME, page);
 		return entity;
 	}
 
@@ -185,13 +162,13 @@ public class SiteResource implements RestService {
 	@Consumes(MediaType.APPLICATION_JSON)
 	public void updatePage(@PathParam("siteId") String siteId, @PathParam("pageId") String pageId,
 			@Context UriInfo uriInfo) {
-		Page entity = siteService.find(Page.class, pageId);
+		Page entity = service.findByModelId(MODEL_PAGE, pageId);
 		if (entity == null) {
 			throw new WebApplicationException(Response.status(Status.NOT_FOUND)
 					.entity("No page with id " + pageId + " exists").build());
 		}
 		copy(entity, uriInfo.getQueryParameters());
-		siteService.update(entity);
+		service.update(PageModel.MODEL_NAME, entity);
 	}
 
 	@DELETE
@@ -204,22 +181,6 @@ public class SiteResource implements RestService {
 		}
 	}
 
-	@Activate
-	public void activate(ComponentContext ctx, Map<String, Object> config) {
-		context = ctx.getBundleContext();
-		init(context);
-	}
-
-	@Reference(target = "(modelClass=org.greenscape.core.model.Site)", policy = ReferencePolicy.DYNAMIC)
-	public void setModelRegistryEntry(ModelRegistryEntry modelRegistryEntry) {
-		this.modelRegistryEntry = modelRegistryEntry;
-		init(context);
-	}
-
-	public void unsetModelRegistryEntry(ModelRegistryEntry modelRegistryEntry) {
-		this.modelRegistryEntry = null;
-	}
-
 	@Reference(policy = ReferencePolicy.DYNAMIC)
 	public void setSiteService(SiteService siteService) {
 		this.siteService = siteService;
@@ -229,6 +190,27 @@ public class SiteResource implements RestService {
 		this.siteService = null;
 	}
 
+	@Override
+	@Reference(policy = ReferencePolicy.DYNAMIC)
+	public void setService(Service service) {
+		this.service = service;
+	}
+
+	public void unsetService(Service service) {
+		this.service = null;
+	}
+
+	@Override
+	@Reference(policy = ReferencePolicy.DYNAMIC)
+	public void setResourceRegistry(ResourceRegistry resourceRegistry) {
+		this.resourceRegistry = resourceRegistry;
+	}
+
+	public void unsetResourceRegistry(ResourceRegistry resourceRegistry) {
+		this.resourceRegistry = null;
+	}
+
+	@Override
 	@Reference(cardinality = ReferenceCardinality.OPTIONAL, policy = ReferencePolicy.DYNAMIC)
 	public void setLogService(LogService logService) {
 		this.logService = logService;
@@ -240,23 +222,10 @@ public class SiteResource implements RestService {
 
 	@Override
 	public String toString() {
-		return clazz.getName();
+		return getResourceName();
 	}
 
-	@SuppressWarnings("unchecked")
-	private void init(BundleContext ctx) {
-		if (ctx == null) {
-			return;
-		}
-		try {
-			clazz = (Class<? extends DocumentModel>) ctx.getBundle(modelRegistryEntry.getBundleId()).loadClass(
-					modelRegistryEntry.getModelClass());
-		} catch (Exception e) {
-			logService.log(LogService.LOG_ERROR, e.getMessage(), e);
-		}
-	}
-
-	private void copy(Site entity, SiteModelParam param) {
+	private void copy(SiteModel entity, SiteModelParam param) {
 		entity.setActive(param.isActive());
 		entity.setDefault(param.isDefault());
 		entity.setHomeURL(param.getHomeURL());

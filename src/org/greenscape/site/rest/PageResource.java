@@ -1,9 +1,7 @@
 package org.greenscape.site.rest;
 
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
@@ -21,49 +19,34 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.UriInfo;
 
-import org.greenscape.core.WebletItem;
+import org.greenscape.core.ResourceRegistry;
+import org.greenscape.core.WebletResource;
 import org.greenscape.core.model.Page;
 import org.greenscape.core.model.PageModel;
 import org.greenscape.core.model.Pagelet;
 import org.greenscape.core.model.PageletModel;
 import org.greenscape.core.service.Service;
-import org.greenscape.persistence.ModelRegistryEntry;
-import org.greenscape.persistence.annotations.Model;
+import org.greenscape.web.rest.AbstractRestService;
 import org.greenscape.web.rest.RestService;
-import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
-import org.osgi.service.component.ComponentContext;
-import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.Modified;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.component.annotations.ReferencePolicy;
 import org.osgi.service.log.LogService;
 
 @Component(name = PageResource.FACTORY_DS, property = { Constants.SERVICE_RANKING + "=1000" })
-public class PageResource implements RestService {
+public class PageResource extends AbstractRestService implements RestService {
 	static final String FACTORY_DS = "org.greenscape.site.rest.PageResource";
+	private static final String MODEL_PAGE = "page";
+	private static final String MODEL_PAGELET = "pagelet";
 	private static final String PATH_DEF_PAGE_ID = "{pageId}";
 
-	private Service service;
-	private ModelRegistryEntry modelRegistryEntry;
-	private Class<Page> clazz;
-	private final List<WebletItem> weblets = new ArrayList<WebletItem>();
-
-	private BundleContext context;
 	private LogService logService;
 
 	@Override
 	public String getResourceName() {
-		return clazz.getAnnotation(Model.class).name();
-	}
-
-	@GET
-	@Produces(MediaType.APPLICATION_JSON)
-	public List<Page> list(@Context UriInfo uriInfo) {
-		List<Page> list = service.find(clazz, uriInfo.getQueryParameters());
-		return list;
+		return MODEL_PAGE;
 	}
 
 	@GET
@@ -72,7 +55,7 @@ public class PageResource implements RestService {
 	public PageModel getPage(@PathParam("pageId") String pageId) {
 		Page page = null;
 		try {
-			page = service.find(clazz, pageId);
+			page = service.findByModelId(MODEL_PAGE, pageId);
 		} catch (Exception e) {
 			logService.log(LogService.LOG_ERROR, e.getMessage(), e);
 			throw new WebApplicationException(Response.status(Status.NOT_FOUND).entity("Server error").build());
@@ -82,8 +65,10 @@ public class PageResource implements RestService {
 
 	@DELETE
 	@Path(PATH_DEF_PAGE_ID)
-	public void deleteModel(@PathParam("pageId") String id) {
-		service.delete(clazz, id);
+	public void deleteModel(@Context UriInfo uriInfo, @PathParam("pageId") String id) {
+		String resourceName = uriInfo.getPathParameters().get("name").get(0);
+		checkPermission(resourceName + ":1:" + "DELETE");
+		service.delete(MODEL_PAGE, id);
 	}
 
 	/*
@@ -94,9 +79,10 @@ public class PageResource implements RestService {
 	@Produces(MediaType.APPLICATION_JSON)
 	@Path(PATH_DEF_PAGE_ID + "/pagelet")
 	public List<Pagelet> getPagelets(@PathParam("pageId") String pageId) {
-		List<Pagelet> pagelets = service.find(Pagelet.class, Pagelet.PAGE_ID, pageId);
+		List<Pagelet> pagelets = service.find(MODEL_PAGELET, Pagelet.PAGE_ID, pageId);
+		List<WebletResource> weblets = resourceRegistry.getResources(WebletResource.class);
 		for (Pagelet pagelet : pagelets) {
-			for (WebletItem weblet : weblets) {
+			for (WebletResource weblet : weblets) {
 				if (pagelet.getWebletId().equals(weblet.getId())) {
 					pagelet.setWeblet(weblet);
 					break;
@@ -111,12 +97,13 @@ public class PageResource implements RestService {
 	@Path(PATH_DEF_PAGE_ID + "/pagelet")
 	public PageletModel addPagelet(@PathParam("pageId") String pageId, PageletModelParam pageletParam) {
 		// validate pageId
-		Page page = service.find(Page.class, pageId);
+		Page page = service.findByModelId(MODEL_PAGE, pageId);
 		if (page == null) {
 			throw new WebApplicationException(Response.status(Status.NOT_FOUND).entity("Page does not exist").build());
 		}
-		WebletItem weblet = null;
-		for (WebletItem item : weblets) {
+		List<WebletResource> weblets = resourceRegistry.getResources(WebletResource.class);
+		WebletResource weblet = null;
+		for (WebletResource item : weblets) {
 			if (item.getId().equals(pageletParam.getWebletId())) {
 				weblet = item;
 				break;
@@ -125,7 +112,7 @@ public class PageResource implements RestService {
 		if (weblet == null) {
 			throw new WebApplicationException(Response.status(Status.NOT_FOUND).entity("Weblet does not exist").build());
 		}
-		List<Pagelet> pagelets = service.find(Pagelet.class, Pagelet.PAGE_ID, pageId);
+		List<Pagelet> pagelets = service.find(MODEL_PAGELET, Pagelet.PAGE_ID, pageId);
 		// validate weblet is multi-instanceable on same page
 		validateWebletInstanceability(weblet, pagelets);
 		reorderPagelets(pagelets, pageletParam);
@@ -134,12 +121,12 @@ public class PageResource implements RestService {
 		pagelet.setActive(true);
 		pagelet.setColumn(pageletParam.getColumn());
 		Date now = new Date();
-		pagelet.setCreateDate(now).setModifiedDate(now);
+		pagelet.setCreatedDate(now).setModifiedDate(now);
 		pagelet.setOrder(pageletParam.getOrder());
 		pagelet.setOrganizationId(page.getOrganizationId());
 		pagelet.setPageId(pageId).setRow(pageletParam.getRow()).setTitle(weblet.getTitle())
 		.setWebletId(pageletParam.getWebletId());
-		service.save(pagelet);
+		service.save("pagelet", pagelet);
 		return pagelet;
 	}
 
@@ -149,15 +136,15 @@ public class PageResource implements RestService {
 	public PageletModel updatePagelet(@PathParam("pageId") String pageId, @PathParam("pageletId") String pageletId,
 			PageletModelParam pageletParam) {
 		// validate pageId
-		Page page = service.find(Page.class, pageId);
+		Page page = service.findByModelId(MODEL_PAGE, pageId);
 		if (page == null) {
 			throw new WebApplicationException(Response.status(Status.NOT_FOUND).entity("Page does not exist").build());
 		}
 		if (pageletParam.getRow() != null && pageletParam.getColumn() != null && pageletParam.getOrder() != null) {
-			List<Pagelet> pagelets = service.find(Pagelet.class, Pagelet.PAGE_ID, pageId);
+			List<Pagelet> pagelets = service.find(MODEL_PAGELET, Pagelet.PAGE_ID, pageId);
 			reorderPagelets(pagelets, pageletParam);
 		}
-		Pagelet pagelet = service.find(Pagelet.class, pageletId);
+		Pagelet pagelet = service.findByModelId(MODEL_PAGELET, pageletId);
 		Date now = new Date();
 		pagelet.setModifiedDate(now);
 		if (pageletParam.getRow() != null) {
@@ -182,12 +169,12 @@ public class PageResource implements RestService {
 	public void removePagelet(@PathParam("pageId") String pageId, @PathParam("pageletId") String pageletId,
 			@QueryParam("row") int row, @QueryParam("column") int column, @QueryParam("order") int order) {
 		// validate pageId
-		Page page = service.find(Page.class, pageId);
+		Page page = service.findByModelId(MODEL_PAGE, pageId);
 		if (page == null) {
 			throw new WebApplicationException(Response.status(Status.NOT_FOUND).entity("Page does not exist").build());
 		}
-		service.delete(Pagelet.class, pageletId);
-		List<Pagelet> pagelets = service.find(Pagelet.class, Pagelet.PAGE_ID, pageId);
+		service.delete(MODEL_PAGELET, pageletId);
+		List<Pagelet> pagelets = service.find(MODEL_PAGELET, Pagelet.PAGE_ID, pageId);
 		for (Pagelet pg : pagelets) {
 			if (pg.getRow() == row && pg.getColumn() == column && pg.getOrder() > order) {
 				pg.setOrder(pg.getOrder().intValue() - 1);
@@ -196,27 +183,7 @@ public class PageResource implements RestService {
 		}
 	}
 
-	@Activate
-	public void activate(ComponentContext ctx, Map<String, Object> config) {
-		context = ctx.getBundleContext();
-		init(context);
-	}
-
-	@Modified
-	public void modified(ComponentContext ctx, Map<String, Object> config) {
-		context = ctx.getBundleContext();
-		init(context);
-	}
-
-	@Reference(target = "(modelClass=org.greenscape.core.model.Page)", policy = ReferencePolicy.DYNAMIC)
-	public void setModelRegistryEntry(ModelRegistryEntry modelRegistryEntry) {
-		this.modelRegistryEntry = modelRegistryEntry;
-	}
-
-	public void unsetModelRegistryEntry(ModelRegistryEntry modelRegistryEntry) {
-		this.modelRegistryEntry = null;
-	}
-
+	@Override
 	@Reference(policy = ReferencePolicy.DYNAMIC)
 	public void setService(Service service) {
 		this.service = service;
@@ -226,15 +193,17 @@ public class PageResource implements RestService {
 		this.service = null;
 	}
 
-	@Reference(cardinality = ReferenceCardinality.MULTIPLE, policy = ReferencePolicy.DYNAMIC)
-	public void setWeblet(WebletItem weblet) {
-		weblets.add(weblet);
+	@Override
+	@Reference(policy = ReferencePolicy.DYNAMIC)
+	public void setResourceRegistry(ResourceRegistry resourceRegistry) {
+		this.resourceRegistry = resourceRegistry;
 	}
 
-	public void unsetWeblet(WebletItem weblet) {
-		weblets.remove(weblet);
+	public void unsetResourceRegistry(ResourceRegistry resourceRegistry) {
+		this.resourceRegistry = null;
 	}
 
+	@Override
 	@Reference(cardinality = ReferenceCardinality.OPTIONAL, policy = ReferencePolicy.DYNAMIC)
 	public void setLogService(LogService logService) {
 		this.logService = logService;
@@ -246,20 +215,10 @@ public class PageResource implements RestService {
 
 	@Override
 	public String toString() {
-		return clazz.getName();
+		return getResourceName();
 	}
 
-	@SuppressWarnings("unchecked")
-	private void init(BundleContext ctx) {
-		try {
-			clazz = (Class<Page>) ctx.getBundle(modelRegistryEntry.getBundleId()).loadClass(
-					modelRegistryEntry.getModelClass());
-		} catch (Exception e) {
-			logService.log(LogService.LOG_ERROR, e.getMessage(), e);
-		}
-	}
-
-	private void validateWebletInstanceability(WebletItem weblet, List<Pagelet> pagelets) {
+	private void validateWebletInstanceability(WebletResource weblet, List<Pagelet> pagelets) {
 		if (!weblet.isInstanceable()) {
 			for (Pagelet pagelet : pagelets) {
 				if (pagelet.getWebletId().equals(weblet.getId())) {
