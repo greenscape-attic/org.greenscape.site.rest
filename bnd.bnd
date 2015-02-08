@@ -1,11 +1,13 @@
 Bundle-Version: 0.1.0
 Private-Package: org.greenscape.site.rest
 -buildpath:  \
-	osgi.core;version=4.3,\
-	osgi.cmpn,\
+	osgi.core;version=5.0,\
+	osgi.cmpn;version=5.0,\
 	org.amdatu.web.rest.jaxrs,\
 	org.eclipse.osgi.services,\
 	org.greenscape.site.service;version=latest,\
 	org.greenscape.web.rest;version=latest,\
 	org.greenscape.core;version=latest
 -dsannotations: *
+javac.source=1.8
+javac.target=1.8
