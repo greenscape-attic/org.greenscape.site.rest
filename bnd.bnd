@@ -7,7 +7,8 @@ Private-Package: org.greenscape.site.rest
 	org.eclipse.osgi.services,\
 	org.greenscape.site.service;version=latest,\
 	org.greenscape.web.rest;version=latest,\
-	org.greenscape.core;version=latest
+	org.greenscape.core;version=latest,\
+	org.greenscape.persistence;version=latest
 -dsannotations: *
 javac.source=1.8
 javac.target=1.8
